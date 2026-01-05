@@ -87,8 +87,11 @@ def render_blender(template: str, output_path: str, config: dict) -> dict:
             "error": f"Template script not found: {script_path}"
         }
 
-    # Build Blender command
+    # Build Blender command with xvfb-run for GPU initialization
     cmd = [
+        "xvfb-run",
+        "-a",  # Auto-select display
+        "--server-args=-screen 0 1920x1080x24",
         "blender",
         "--background",
         "--python", script_path,
@@ -105,6 +108,7 @@ def render_blender(template: str, output_path: str, config: dict) -> dict:
     start_time = time.time()
 
     try:
+        # Run with output streaming so we can see Blender's GPU detection
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -113,6 +117,16 @@ def render_blender(template: str, output_path: str, config: dict) -> dict:
         )
 
         render_time = time.time() - start_time
+
+        # Print Blender output for debugging
+        if result.stdout:
+            print("=== BLENDER STDOUT ===")
+            for line in result.stdout.split('\n')[-50:]:  # Last 50 lines
+                print(line)
+        if result.stderr:
+            print("=== BLENDER STDERR ===")
+            for line in result.stderr.split('\n')[-20:]:  # Last 20 lines
+                print(line)
 
         if result.returncode == 0 and os.path.exists(output_path):
             file_size = os.path.getsize(output_path)
