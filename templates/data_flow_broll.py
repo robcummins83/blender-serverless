@@ -308,13 +308,37 @@ def setup_render():
 
     scene.render.engine = 'CYCLES'
 
+    # GPU setup - try multiple backends
+    gpu_enabled = False
     if CONFIG["use_gpu"]:
         prefs = bpy.context.preferences.addons['cycles'].preferences
-        prefs.compute_device_type = 'CUDA'
-        prefs.get_devices()
-        for device in prefs.devices:
-            device.use = True
-        scene.cycles.device = 'GPU'
+
+        # Try different compute backends in order of preference
+        for device_type in ['OPTIX', 'CUDA', 'HIP', 'ONEAPI', 'METAL']:
+            try:
+                prefs.compute_device_type = device_type
+                prefs.get_devices()
+
+                gpu_devices = [d for d in prefs.devices if d.type != 'CPU']
+
+                if gpu_devices:
+                    print(f"Found {len(gpu_devices)} GPU(s) with {device_type}:")
+                    for device in prefs.devices:
+                        device.use = (device.type != 'CPU')
+                        print(f"  - {device.name} ({device.type}): {'enabled' if device.use else 'disabled'}")
+
+                    scene.cycles.device = 'GPU'
+                    gpu_enabled = True
+                    print(f"GPU rendering enabled with {device_type}")
+                    break
+
+            except Exception as e:
+                print(f"{device_type} not available: {e}")
+                continue
+
+        if not gpu_enabled:
+            print("WARNING: No GPU found, falling back to CPU rendering")
+            scene.cycles.device = 'CPU'
 
     scene.cycles.samples = CONFIG["samples"]
     scene.cycles.use_denoising = True
