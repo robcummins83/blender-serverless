@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+*.mp4
+*.blend1
+.env
+.DS_Store
