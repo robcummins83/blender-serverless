@@ -7,16 +7,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 
-# Install Blender and dependencies
+# Install dependencies and Blender from official repos
 RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:savoury1/blender \
-    && apt-get update && apt-get install -y \
     blender \
     python3 \
     python3-pip \
     ffmpeg \
     wget \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Install RunPod SDK
