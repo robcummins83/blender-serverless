@@ -71,7 +71,8 @@ def setup_gpu(require_gpu=True):
     prefs = bpy.context.preferences.addons['cycles'].preferences
     gpu_enabled = False
 
-    for device_type in ['CUDA', 'OPTIX', 'HIP', 'ONEAPI', 'METAL']:
+    # Try OptiX FIRST - uses RT cores, 2-3x faster on RTX cards
+    for device_type in ['OPTIX', 'CUDA', 'HIP', 'ONEAPI', 'METAL']:
         try:
             print(f"Trying {device_type}...")
             prefs.compute_device_type = device_type
