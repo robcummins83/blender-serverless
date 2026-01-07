@@ -34,11 +34,19 @@ import json
 import tempfile
 from pathlib import Path
 
-# Available templates
-TEMPLATES = {
+# Procedural templates (Python scripts that create scenes)
+PROCEDURAL_TEMPLATES = {
     "neural_network": "/workspace/templates/neural_network_broll.py",
     "data_flow": "/workspace/templates/data_flow_broll.py",
 }
+
+# Blend file templates (pre-made .blend files)
+BLEND_TEMPLATES = {
+    "ai_cpu_activation": "/workspace/blend_templates/ai_cpu_activation.blend",
+}
+
+# Combined for lookup
+TEMPLATES = {**PROCEDURAL_TEMPLATES, **BLEND_TEMPLATES}
 
 # Default config
 DEFAULT_CONFIG = {
@@ -71,6 +79,10 @@ def render_blender(template: str, output_path: str, config: dict) -> dict:
     """
     Execute Blender render.
 
+    Supports two types of templates:
+    - Procedural: Python scripts that create scenes from scratch
+    - Blend files: Pre-made .blend files with animations
+
     Returns dict with success status and timing info.
     """
     if template not in TEMPLATES:
@@ -79,30 +91,55 @@ def render_blender(template: str, output_path: str, config: dict) -> dict:
             "error": f"Unknown template: {template}. Available: {list(TEMPLATES.keys())}"
         }
 
-    script_path = TEMPLATES[template]
+    template_path = TEMPLATES[template]
 
-    if not os.path.exists(script_path):
+    if not os.path.exists(template_path):
         return {
             "success": False,
-            "error": f"Template script not found: {script_path}"
+            "error": f"Template not found: {template_path}"
         }
 
+    # Determine if this is a .blend file or procedural Python script
+    is_blend_file = template in BLEND_TEMPLATES
+
     # Build Blender command with xvfb-run for GPU initialization
-    cmd = [
-        "xvfb-run",
-        "-a",  # Auto-select display
-        "--server-args=-screen 0 1920x1080x24",
-        "blender",
-        "--background",
-        "--python", script_path,
-        "--",
-        "--output", output_path,
-        "--duration", str(config.get("duration", 8)),
-        "--width", str(config.get("resolution", [1920, 1080])[0]),
-        "--height", str(config.get("resolution", [1920, 1080])[1]),
-        "--samples", str(config.get("samples", 128)),
-        "--fps", str(config.get("fps", 30)),
-    ]
+    if is_blend_file:
+        # .blend file - load it and use render_blend.py script
+        cmd = [
+            "xvfb-run",
+            "-a",
+            "--server-args=-screen 0 1920x1080x24",
+            "blender",
+            "--background",
+            template_path,  # Load the .blend file
+            "--python", "/workspace/render_blend.py",
+            "--",
+            "--output", output_path,
+            "--width", str(config.get("resolution", [1920, 1080])[0]),
+            "--height", str(config.get("resolution", [1920, 1080])[1]),
+            "--samples", str(config.get("samples", 128)),
+            "--fps", str(config.get("fps", 30)),
+        ]
+        # Only add duration if explicitly set (otherwise use file's animation)
+        if config.get("duration"):
+            cmd.extend(["--duration", str(config["duration"])])
+    else:
+        # Procedural template - Python script creates the scene
+        cmd = [
+            "xvfb-run",
+            "-a",
+            "--server-args=-screen 0 1920x1080x24",
+            "blender",
+            "--background",
+            "--python", template_path,
+            "--",
+            "--output", output_path,
+            "--duration", str(config.get("duration", 8)),
+            "--width", str(config.get("resolution", [1920, 1080])[0]),
+            "--height", str(config.get("resolution", [1920, 1080])[1]),
+            "--samples", str(config.get("samples", 128)),
+            "--fps", str(config.get("fps", 30)),
+        ]
 
     print(f"Executing: {' '.join(cmd)}")
     start_time = time.time()

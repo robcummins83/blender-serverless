@@ -44,10 +44,22 @@ Response contains base64-encoded MP4 video.
 
 ## Available Templates
 
+### Procedural Templates
+Python scripts that generate scenes from scratch:
+
 | Template | Description |
 |----------|-------------|
 | `neural_network` | 3D neural network with glowing nodes and connections |
 | `data_flow` | Particles flowing along paths to central node |
+
+### Blend File Templates
+Pre-made .blend files from BlenderKit:
+
+| Template | Description |
+|----------|-------------|
+| `ai_cpu_activation` | AI/CPU activation animation |
+
+Blend templates use the file's existing animation duration unless overridden.
 
 ## API Reference
 
@@ -96,10 +108,16 @@ Response contains base64-encoded MP4 video.
 
 ## Local Development
 
-Test locally with Blender installed:
+Test procedural templates locally:
 
 ```bash
 blender --background --python templates/neural_network_broll.py -- --output test.mp4
+```
+
+Test .blend file templates locally:
+
+```bash
+blender --background blend_templates/ai_cpu_activation.blend --python render_blend.py -- --output test.mp4 --samples 64
 ```
 
 ## License
