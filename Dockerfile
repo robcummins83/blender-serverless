@@ -1,7 +1,7 @@
 # RunPod Serverless Blender Renderer
 # GPU-accelerated B-roll generation with CUDA support
 
-FROM nvidia/cuda:12.1.0-runtime-ubuntu22.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NVIDIA_VISIBLE_DEVICES=all
