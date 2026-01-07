@@ -59,8 +59,12 @@ def parse_args():
     return args
 
 
-def setup_gpu():
-    """Configure GPU rendering if available."""
+def setup_gpu(require_gpu=True):
+    """Configure GPU rendering.
+
+    Args:
+        require_gpu: If True, raise error if no GPU found (default True for RunPod)
+    """
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
 
@@ -84,7 +88,7 @@ def setup_gpu():
 
                 scene.cycles.device = 'GPU'
                 gpu_enabled = True
-                print(f"GPU rendering enabled with {device_type}")
+                print(f"GPU rendering ENABLED with {device_type}")
                 break
 
         except Exception as e:
@@ -92,8 +96,11 @@ def setup_gpu():
             continue
 
     if not gpu_enabled:
-        print("WARNING: No GPU found, using CPU rendering")
-        scene.cycles.device = 'CPU'
+        if require_gpu:
+            raise RuntimeError("ERROR: No GPU found! GPU is required for rendering.")
+        else:
+            print("WARNING: No GPU found, falling back to CPU (will be slow)")
+            scene.cycles.device = 'CPU'
 
     return gpu_enabled
 

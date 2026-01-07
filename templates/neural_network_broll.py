@@ -433,8 +433,7 @@ def setup_render():
                 continue
 
         if not gpu_enabled:
-            print("WARNING: No GPU found, falling back to CPU rendering")
-            scene.cycles.device = 'CPU'
+            raise RuntimeError("ERROR: No GPU found! GPU is required for rendering.")
     else:
         scene.cycles.device = 'CPU'
         print("GPU disabled in config, using CPU")

@@ -29,20 +29,24 @@ HEADERS = {
 }
 
 
-def test_render():
-    """Test a simple render using async /run endpoint with polling."""
+def test_render(template="ai_cpu_activation", duration=8, samples=128):
+    """Test a render using async /run endpoint with polling."""
     print("=" * 50)
-    print("Testing Blender 4.2 + CUDA")
+    print(f"Testing Blender 4.2 + CUDA")
+    print(f"Template: {template}")
     print("=" * 50)
 
     payload = {
         "input": {
-            "template": "neural_network",
-            "duration": 4,          # Short for testing
+            "template": template,
             "resolution": [1920, 1080],
-            "samples": 64,          # Lower for faster test
+            "samples": samples,
         }
     }
+
+    # Only add duration if specified (blend files use their own duration)
+    if duration:
+        payload["input"]["duration"] = duration
 
     # Submit job (async)
     print("Submitting job...")
@@ -111,4 +115,12 @@ def test_render():
 
 
 if __name__ == "__main__":
-    test_render()
+    import sys
+
+    # Parse simple args: python test_endpoint.py [template] [duration] [samples]
+    template = sys.argv[1] if len(sys.argv) > 1 else "ai_cpu_activation"
+    duration = int(sys.argv[2]) if len(sys.argv) > 2 else 8
+    samples = int(sys.argv[3]) if len(sys.argv) > 3 else 128
+
+    print(f"Config: template={template}, duration={duration}s, samples={samples}")
+    test_render(template=template, duration=duration, samples=samples)
