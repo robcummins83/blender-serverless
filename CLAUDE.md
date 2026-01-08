@@ -2,70 +2,85 @@
 
 ## Overview
 
-Serverless Blender rendering on RunPod for generating B-roll clips. Supports both procedural Python templates and pre-made .blend files.
+Serverless Blender rendering on RunPod for generating B-roll clips. Uses BlenderKit .blend templates rendered with GPU acceleration.
 
 ## Architecture
 
 ```
-RunPod Serverless Endpoint
+RunPod Serverless Endpoint (9ypr4dw7bjj7xi)
     │
     ▼
 handler.py (receives job, returns base64 video)
     │
     ▼
-render_blend.py (configures GPU, renders animation)
+render_blend.py (configures GPU, renders to PNG frames)
     │
     ▼
-Blender 4.2 LTS (Cycles GPU rendering)
+Blender 4.2 LTS (Cycles GPU rendering with OptiX/CUDA)
+    │
+    ▼
+FFmpeg NVENC (GPU-accelerated H264 encoding)
+```
+
+## Project Structure
+
+```
+blender-serverless/
+├── handler.py          # RunPod serverless handler
+├── render_blend.py     # Generic .blend file renderer
+├── Dockerfile          # Container with Blender 4.2 + CUDA
+├── templates/          # BlenderKit .blend templates
+│   └── ai_cpu_activation.blend
+├── test_endpoint.py    # Endpoint testing script
+└── CLAUDE.md
 ```
 
 ## Templates
 
-### Procedural (Python scripts)
-- `templates/neural_network_broll.py` - Neural network visualization
-- `templates/data_flow_broll.py` - Data flow animation
+All templates are BlenderKit .blend files stored in `templates/`:
 
-### Blend Files (pre-made)
-- `blend_templates/ai_cpu_activation.blend` - AI CPU activation animation
+| Template | File | Description |
+|----------|------|-------------|
+| `ai_cpu_activation` | `ai_cpu_activation.blend` | AI CPU activation animation |
 
-## Render Engine
+To add new templates:
+1. Download from BlenderKit
+2. Save to `templates/your_template.blend`
+3. Add to `TEMPLATES` dict in `handler.py`
 
-Uses **Cycles** with GPU acceleration:
+## Render Pipeline
+
+### Two-Stage Process
+
+1. **Blender Cycles** renders frames to PNG (GPU-accelerated)
+2. **FFmpeg NVENC** encodes PNGs to H264 MP4 (GPU-accelerated)
+
+### GPU Acceleration
+
+**Blender Cycles:**
 - Tries **OptiX first** (2-3x faster on RTX, uses RT cores)
 - Falls back to CUDA if OptiX unavailable
-- `render_blend.py:74` - Device priority order
+- Device priority: OptiX > CUDA > HIP > ONEAPI > METAL
 
-## Current Issues
+**FFmpeg NVENC:**
+- Uses `-hwaccel cuda` for input decoding
+- Uses `h264_nvenc` for H264 encoding
+- Requires `NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video` in Docker
 
-### Build Quota Exceeded (BLOCKING)
+### Error Handling
 
-RunPod build fails with `disk quota exceeded` during cache export. The image builds successfully but cache write fails, causing RunPod to reject the deployment.
-
-**Attempted fixes:**
-1. Switch from `nvidia/cuda:12.1.0-devel` to `runtime` - Still failed
-2. Switch to plain `ubuntu:22.04` - Still failed
-
-**Root cause:** Account-level storage quota full from accumulated builds across all endpoints.
-
-**Solutions:**
-1. Contact RunPod support to clear build cache
-2. Use a pre-built image from Docker Hub instead of building on RunPod
-3. Delete all endpoints and try fresh account
-
-### Render Performance (Untested due to build issue)
-
-Previous tests showed:
-- 8s clip at 64 samples took 17+ minutes before cancellation
-- GPU telemetry showed intermittent usage (on/off pattern)
-- Suspected cause: CUDA used instead of OptiX
-
-**Fix applied but untested:**
-- Changed device priority to try OptiX first (`render_blend.py:74`)
+- NVENC encoding failure raises RuntimeError (no CPU fallback)
+- Missing GPU raises RuntimeError
+- This ensures issues are caught immediately rather than silently degrading
 
 ## Configuration
 
 ### handler.py
 ```python
+TEMPLATES = {
+    "ai_cpu_activation": "/workspace/templates/ai_cpu_activation.blend",
+}
+
 DEFAULT_CONFIG = {
     "duration": 8,
     "resolution": [1920, 1080],
@@ -78,7 +93,7 @@ DEFAULT_CONFIG = {
 - Render engine: Cycles
 - Device priority: OptiX > CUDA > HIP > ONEAPI > METAL
 - Denoising: Enabled
-- Output: H264 MP4
+- Output: PNG frames → NVENC H264 MP4
 
 ## API
 
@@ -107,31 +122,41 @@ DEFAULT_CONFIG = {
 }
 ```
 
+## Environment Variables
+
+```bash
+RUNPOD_API_KEY=your_key
+RUNPOD_ENDPOINT_ID=9ypr4dw7bjj7xi
+```
+
 ## Testing
 
 ```bash
-# Local test
 python test_endpoint.py
-
-# Set environment variables
-RUNPOD_API_KEY=your_key
-RUNPOD_ENDPOINT_ID=your_endpoint_id
 ```
+
+## Docker Configuration
+
+### Base Image
+`nvidia/cuda:12.1.0-devel-ubuntu22.04`
+
+### Required Capabilities
+```dockerfile
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video
+```
+
+The `video` capability is required for NVENC encoding.
+
+### Installed Components
+- Blender 4.2 LTS (bundled CUDA/OptiX runtime)
+- FFmpeg (with NVENC support)
+- Python 3 + runpod SDK
+- xvfb (headless display for GPU initialization)
 
 ## Dependencies
 
-- Blender 4.2 LTS (bundled CUDA/OptiX)
+- Blender 4.2 LTS
+- FFmpeg with NVENC
 - Python 3
-- FFmpeg
-- xvfb (headless display)
+- xvfb
 - runpod SDK
-
-## Docker Base Image History
-
-| Image | Size | Status |
-|-------|------|--------|
-| `nvidia/cuda:12.1.0-devel-ubuntu22.04` | ~5GB | Quota exceeded |
-| `nvidia/cuda:12.1.0-runtime-ubuntu22.04` | ~2GB | Quota exceeded |
-| `ubuntu:22.04` | ~70MB | Quota exceeded (cache) |
-
-Blender 4.2 bundles its own CUDA/OptiX runtime, so nvidia base images aren't strictly required. The nvidia-docker runtime on RunPod provides the driver.
