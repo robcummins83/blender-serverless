@@ -76,7 +76,7 @@ def setup_gpu(require_gpu=True):
         try:
             print(f"Trying {device_type}...")
             prefs.compute_device_type = device_type
-            prefs.refresh_devices()
+            prefs.get_devices()  # Refresh device list
 
             gpu_devices = [d for d in prefs.devices if d.type != 'CPU']
 

@@ -409,9 +409,8 @@ def setup_render():
                 print(f"Trying {device_type}...")
                 prefs.compute_device_type = device_type
 
-                # CRITICAL: refresh_devices() is required in Docker containers
-                # get_devices() alone doesn't detect GPUs properly
-                prefs.refresh_devices()
+                # Refresh device list after setting compute type
+                prefs.get_devices()
 
                 # Check if any GPU devices are available
                 gpu_devices = [d for d in prefs.devices if d.type != 'CPU']

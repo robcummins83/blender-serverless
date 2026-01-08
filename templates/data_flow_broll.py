@@ -309,7 +309,6 @@ def setup_render():
     scene.render.engine = 'CYCLES'
 
     # GPU setup - try multiple backends
-    # Key fix for Docker: must call refresh_devices() not get_devices()
     gpu_enabled = False
     if CONFIG["use_gpu"]:
         prefs = bpy.context.preferences.addons['cycles'].preferences
@@ -320,8 +319,8 @@ def setup_render():
                 print(f"Trying {device_type}...")
                 prefs.compute_device_type = device_type
 
-                # CRITICAL: refresh_devices() is required in Docker containers
-                prefs.refresh_devices()
+                # Refresh device list after setting compute type
+                prefs.get_devices()
 
                 gpu_devices = [d for d in prefs.devices if d.type != 'CPU']
                 print(f"  Found {len(gpu_devices)} GPU device(s), {len(prefs.devices)} total devices")
