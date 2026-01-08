@@ -17,6 +17,9 @@ This script:
 import bpy
 import sys
 import math
+import subprocess
+import tempfile
+import shutil
 
 
 def parse_args():
@@ -156,14 +159,9 @@ def setup_render(args, gpu_enabled):
 
     scene.cycles.use_denoising = True
 
-    # Output format - MP4
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'
-    scene.render.ffmpeg.ffmpeg_preset = 'GOOD'
-
-    scene.render.filepath = args["output"]
+    # Output format - PNG frames, encode with NVENC after
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.color_mode = 'RGB'
 
 
 def main():
@@ -191,14 +189,43 @@ def main():
     print("\n[2/3] Configuring render...")
     setup_render(args, gpu_enabled)
 
-    # Render
+    # Render to PNG frames
     print("\n[3/3] Rendering...")
     print("=" * 60)
 
+    frames_dir = tempfile.mkdtemp(prefix="blender_frames_")
+    scene = bpy.context.scene
+    scene.render.filepath = f"{frames_dir}/frame_"
+
+    print(f"Rendering frames to: {frames_dir}")
     bpy.ops.render.render(animation=True)
 
+    # Encode with NVENC
+    print("\nEncoding with NVENC...")
+    output_path = args["output"]
+    fps = args["fps"]
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-framerate", str(fps),
+        "-i", f"{frames_dir}/frame_%04d.png",
+        "-c:v", "h264_nvenc",
+        "-preset", "p4",
+        "-cq", "23",
+        "-pix_fmt", "yuv420p",
+        output_path
+    ]
+    result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+
+    if result.returncode != 0:
+        print(f"NVENC failed, using CPU: {result.stderr}")
+        ffmpeg_cmd[6] = "libx264"
+        ffmpeg_cmd[7:9] = ["-preset", "fast"]
+        subprocess.run(ffmpeg_cmd)
+
+    shutil.rmtree(frames_dir)
+
     print("=" * 60)
-    print(f"Render complete! Output: {args['output']}")
+    print(f"Render complete! Output: {output_path}")
 
 
 if __name__ == "__main__":
