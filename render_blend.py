@@ -201,6 +201,19 @@ def main():
     print(f"Rendering {scene.frame_end} frames to: {frames_dir}")
     bpy.ops.render.render(animation=True)
 
+    # Verify frames were created
+    import glob
+    frames = glob.glob(os.path.join(frames_dir, "frame_*.png"))
+    print(f"Created {len(frames)} PNG frames")
+    if len(frames) == 0:
+        shutil.rmtree(frames_dir)
+        raise RuntimeError("No frames were rendered!")
+
+    # List first few frames for debugging
+    frames.sort()
+    print(f"First frame: {os.path.basename(frames[0])}")
+    print(f"Last frame: {os.path.basename(frames[-1])}")
+
     # Encode with NVENC (GPU-accelerated H264)
     print("\n[4/4] Encoding with NVENC...")
     output_path = args["output"]
@@ -222,12 +235,27 @@ def main():
     print(f"Running: {' '.join(ffmpeg_cmd)}")
     result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
 
+    # Always print FFmpeg output for debugging
+    if result.stdout:
+        print(f"FFmpeg stdout: {result.stdout}")
+    if result.stderr:
+        print(f"FFmpeg stderr: {result.stderr}")
+
     if result.returncode != 0:
         print(f"NVENC encoding failed!")
-        print(f"stderr: {result.stderr}")
-        print(f"stdout: {result.stdout}")
         shutil.rmtree(frames_dir)
         raise RuntimeError(f"NVENC encoding failed: {result.stderr}")
+
+    # Verify output file was created and has content
+    if not os.path.exists(output_path):
+        shutil.rmtree(frames_dir)
+        raise RuntimeError(f"Output file was not created: {output_path}")
+
+    output_size = os.path.getsize(output_path)
+    print(f"Output file size: {output_size} bytes")
+    if output_size == 0:
+        shutil.rmtree(frames_dir)
+        raise RuntimeError("Output file is empty (0 bytes)")
 
     # Cleanup frames
     shutil.rmtree(frames_dir)
