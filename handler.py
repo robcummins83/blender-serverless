@@ -6,7 +6,10 @@ Accepts render requests via HTTP API and returns rendered video.
 Request format:
 {
     "input": {
-        "template": "neural_network",  # or "data_flow", etc.
+        "template": "ai_cpu_activation",  # Use baked-in template by name
+        # OR
+        "template_url": "https://raw.githubusercontent.com/.../template.blend",  # Download at runtime
+
         "duration": 8,
         "resolution": [1920, 1080],
         "samples": 128,
@@ -32,6 +35,8 @@ import time
 import os
 import json
 import tempfile
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 # Blend file templates (BlenderKit templates)
@@ -46,6 +51,45 @@ DEFAULT_CONFIG = {
     "samples": 128,
     "fps": 30,
 }
+
+
+def download_template(url: str) -> str:
+    """
+    Download a .blend template from URL to a temp file.
+
+    Returns path to downloaded file.
+    Raises exception on failure.
+    """
+    print(f"Downloading template from: {url}")
+
+    # Create temp file with .blend extension
+    fd, temp_path = tempfile.mkstemp(suffix=".blend")
+    os.close(fd)
+
+    try:
+        # Download with timeout
+        req = urllib.request.Request(url, headers={"User-Agent": "RunPod-Blender/1.0"})
+        with urllib.request.urlopen(req, timeout=120) as response:
+            content = response.read()
+
+        # Write to temp file
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        file_size = os.path.getsize(temp_path)
+        print(f"Downloaded template: {file_size} bytes -> {temp_path}")
+        return temp_path
+
+    except urllib.error.HTTPError as e:
+        os.remove(temp_path)
+        raise Exception(f"HTTP error downloading template: {e.code} {e.reason}")
+    except urllib.error.URLError as e:
+        os.remove(temp_path)
+        raise Exception(f"URL error downloading template: {e.reason}")
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise Exception(f"Failed to download template: {e}")
 
 
 def check_gpu():
@@ -66,20 +110,17 @@ def check_gpu():
     return False
 
 
-def render_blender(template: str, output_path: str, config: dict) -> dict:
+def render_blender(template_path: str, output_path: str, config: dict) -> dict:
     """
     Execute Blender render for a .blend template file.
 
+    Args:
+        template_path: Full path to .blend file
+        output_path: Where to save rendered MP4
+        config: Render configuration dict
+
     Returns dict with success status and timing info.
     """
-    if template not in TEMPLATES:
-        return {
-            "success": False,
-            "error": f"Unknown template: {template}. Available: {list(TEMPLATES.keys())}"
-        }
-
-    template_path = TEMPLATES[template]
-
     if not os.path.exists(template_path):
         return {
             "success": False,
@@ -163,7 +204,8 @@ def handler(job):
     job_input = job.get("input", {})
 
     # Extract parameters
-    template = job_input.get("template", "neural_network")
+    template_name = job_input.get("template")
+    template_url = job_input.get("template_url")
     config = {**DEFAULT_CONFIG}
 
     if "duration" in job_input:
@@ -177,7 +219,28 @@ def handler(job):
     if "config" in job_input:
         config.update(job_input["config"])
 
-    print(f"Template: {template}")
+    # Resolve template path
+    downloaded_template = None
+    if template_url:
+        # Download template from URL
+        print(f"Template URL: {template_url}")
+        try:
+            template_path = download_template(template_url)
+            downloaded_template = template_path  # Track for cleanup
+        except Exception as e:
+            return {"error": f"Failed to download template: {e}"}
+    elif template_name:
+        # Use baked-in template by name
+        if template_name not in TEMPLATES:
+            return {"error": f"Unknown template: {template_name}. Available: {list(TEMPLATES.keys())}"}
+        template_path = TEMPLATES[template_name]
+        print(f"Template: {template_name} -> {template_path}")
+    else:
+        # Default to first available template
+        template_name = "ai_cpu_activation"
+        template_path = TEMPLATES[template_name]
+        print(f"Template: {template_name} (default) -> {template_path}")
+
     print(f"Config: {config}")
 
     # Check GPU
@@ -192,7 +255,7 @@ def handler(job):
     try:
         # Render
         print(f"Starting render to: {output_path}")
-        render_result = render_blender(template, output_path, config)
+        render_result = render_blender(template_path, output_path, config)
 
         if not render_result["success"]:
             return {"error": render_result.get("error", "Render failed")}
@@ -205,7 +268,8 @@ def handler(job):
 
         return {
             "video_base64": video_base64,
-            "template": template,
+            "template": template_name or "from_url",
+            "template_url": template_url,
             "duration": config["duration"],
             "resolution": config["resolution"],
             "render_time_seconds": render_result["render_time_seconds"],
@@ -214,9 +278,13 @@ def handler(job):
         }
 
     finally:
-        # Cleanup
+        # Cleanup output file
         if os.path.exists(output_path):
             os.remove(output_path)
+        # Cleanup downloaded template
+        if downloaded_template and os.path.exists(downloaded_template):
+            os.remove(downloaded_template)
+            print(f"Cleaned up downloaded template: {downloaded_template}")
 
 
 # For local testing
