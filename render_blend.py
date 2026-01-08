@@ -214,20 +214,18 @@ def main():
     print(f"First frame: {os.path.basename(frames[0])}")
     print(f"Last frame: {os.path.basename(frames[-1])}")
 
-    # Encode with NVENC (GPU-accelerated H264)
-    print("\n[4/4] Encoding with NVENC...")
+    # Encode with libx264
+    print("\n[4/4] Encoding with libx264...")
     output_path = args["output"]
     fps = args["fps"]
 
     ffmpeg_cmd = [
         "ffmpeg", "-y",
-        "-hwaccel", "cuda",
-        "-hwaccel_output_format", "cuda",
         "-framerate", str(fps),
         "-i", os.path.join(frames_dir, "frame_%04d.png"),
-        "-c:v", "h264_nvenc",
-        "-preset", "p4",
-        "-cq", "23",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
         "-pix_fmt", "yuv420p",
         output_path
     ]
@@ -242,9 +240,9 @@ def main():
         print(f"FFmpeg stderr: {result.stderr}")
 
     if result.returncode != 0:
-        print(f"NVENC encoding failed!")
+        print(f"FFmpeg encoding failed!")
         shutil.rmtree(frames_dir)
-        raise RuntimeError(f"NVENC encoding failed: {result.stderr}")
+        raise RuntimeError(f"FFmpeg encoding failed: {result.stderr}")
 
     # Verify output file was created and has content
     if not os.path.exists(output_path):
