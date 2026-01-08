@@ -5,7 +5,7 @@ FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \

@@ -18,9 +18,6 @@ Usage (with GUI for preview):
 import bpy
 import math
 import random
-import subprocess
-import tempfile
-import shutil
 import sys
 from mathutils import Vector
 
@@ -469,10 +466,12 @@ def setup_render():
     scene.render.resolution_y = CONFIG["resolution_y"]
     scene.render.resolution_percentage = 100
 
-    # Output format - use PNG frames, encode with NVENC after
-    # (Blender's built-in FFmpeg doesn't support NVENC directly)
-    scene.render.image_settings.file_format = 'PNG'
-    scene.render.image_settings.color_mode = 'RGB'
+    # Output format
+    scene.render.image_settings.file_format = 'FFMPEG'
+    scene.render.ffmpeg.format = 'MPEG4'
+    scene.render.ffmpeg.codec = 'H264'
+    scene.render.ffmpeg.constant_rate_factor = 'HIGH'
+    scene.render.ffmpeg.ffmpeg_preset = 'GOOD'
 
     scene.render.filepath = CONFIG["output_path"]
 
@@ -550,39 +549,9 @@ def main():
 
     # Check if running in background mode
     if bpy.app.background:
-        # Render to PNG frames, then encode with NVENC
-        frames_dir = tempfile.mkdtemp(prefix="blender_frames_")
-        scene = bpy.context.scene
-        scene.render.filepath = f"{frames_dir}/frame_"
-
-        print(f"\nRendering frames to: {frames_dir}")
+        print("\nStarting render...")
         bpy.ops.render.render(animation=True)
-
-        # Encode with NVENC (GPU-accelerated H264)
-        print("\nEncoding with NVENC...")
-        output_path = CONFIG['output_path']
-        ffmpeg_cmd = [
-            "ffmpeg", "-y",
-            "-framerate", str(CONFIG['fps']),
-            "-i", f"{frames_dir}/frame_%04d.png",
-            "-c:v", "h264_nvenc",
-            "-preset", "p4",
-            "-cq", "23",
-            "-pix_fmt", "yuv420p",
-            output_path
-        ]
-        print(f"Running: {' '.join(ffmpeg_cmd)}")
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f"NVENC failed, falling back to CPU: {result.stderr}")
-            ffmpeg_cmd[6] = "libx264"  # Replace h264_nvenc with libx264
-            ffmpeg_cmd[7:9] = ["-preset", "fast"]  # Replace NVENC preset
-            subprocess.run(ffmpeg_cmd)
-
-        # Cleanup frames
-        shutil.rmtree(frames_dir)
-        print(f"\nRender complete! Output: {output_path}")
+        print(f"\nRender complete! Output: {CONFIG['output_path']}")
     else:
         print("\nRunning in GUI mode - use Render > Render Animation to render")
         print("Or run with: blender --background --python neural_network_broll.py")
