@@ -580,19 +580,11 @@ def main():
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
 
         if result.returncode != 0:
-            print(f"NVENC failed: {result.stderr}")
-            print("Falling back to CPU encoding...")
-            ffmpeg_fallback = [
-                "ffmpeg", "-y",
-                "-framerate", str(fps),
-                "-i", os.path.join(frames_dir, "frame_%04d.png"),
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
-                "-pix_fmt", "yuv420p",
-                output_path
-            ]
-            subprocess.run(ffmpeg_fallback, capture_output=True, text=True)
+            print(f"NVENC encoding failed!")
+            print(f"stderr: {result.stderr}")
+            print(f"stdout: {result.stdout}")
+            shutil.rmtree(frames_dir)
+            raise RuntimeError(f"NVENC encoding failed: {result.stderr}")
 
         # Cleanup frames
         shutil.rmtree(frames_dir)
