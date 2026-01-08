@@ -10,6 +10,10 @@ import bpy
 import math
 import random
 import sys
+import subprocess
+import tempfile
+import shutil
+import os
 from mathutils import Vector
 
 # =============================================================================
@@ -363,10 +367,9 @@ def setup_render():
     scene.render.resolution_y = CONFIG["resolution_y"]
     scene.render.resolution_percentage = 100
 
-    scene.render.image_settings.file_format = 'FFMPEG'
-    scene.render.ffmpeg.format = 'MPEG4'
-    scene.render.ffmpeg.codec = 'H264'
-    scene.render.ffmpeg.constant_rate_factor = 'HIGH'
+    # Output format - PNG frames (encode with NVENC after)
+    scene.render.image_settings.file_format = 'PNG'
+    scene.render.image_settings.color_mode = 'RGB'
 
     scene.render.filepath = CONFIG["output_path"]
 
@@ -422,9 +425,53 @@ def main():
     print("\nScene ready!")
 
     if bpy.app.background:
-        print("\nStarting render...")
+        # Render to PNG frames
+        frames_dir = tempfile.mkdtemp(prefix="blender_frames_")
+        scene = bpy.context.scene
+        scene.render.filepath = os.path.join(frames_dir, "frame_")
+
+        print(f"\nRendering {scene.frame_end} frames to: {frames_dir}")
         bpy.ops.render.render(animation=True)
-        print(f"\nComplete! Output: {CONFIG['output_path']}")
+
+        # Encode with NVENC (GPU-accelerated H264)
+        print("\nEncoding with NVENC...")
+        output_path = CONFIG['output_path']
+        fps = CONFIG['fps']
+
+        ffmpeg_cmd = [
+            "ffmpeg", "-y",
+            "-hwaccel", "cuda",
+            "-hwaccel_output_format", "cuda",
+            "-framerate", str(fps),
+            "-i", os.path.join(frames_dir, "frame_%04d.png"),
+            "-c:v", "h264_nvenc",
+            "-preset", "p4",
+            "-cq", "23",
+            "-pix_fmt", "yuv420p",
+            output_path
+        ]
+
+        print(f"Running: {' '.join(ffmpeg_cmd)}")
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            print(f"NVENC failed: {result.stderr}")
+            print("Falling back to CPU encoding...")
+            ffmpeg_fallback = [
+                "ffmpeg", "-y",
+                "-framerate", str(fps),
+                "-i", os.path.join(frames_dir, "frame_%04d.png"),
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                output_path
+            ]
+            subprocess.run(ffmpeg_fallback, capture_output=True, text=True)
+
+        # Cleanup frames
+        shutil.rmtree(frames_dir)
+        print(f"\nComplete! Output: {output_path}")
     else:
         print("\nGUI mode - render manually or run headless")
 
