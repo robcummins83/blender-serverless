@@ -104,10 +104,20 @@ def test_render(template="ai_cpu_activation", duration=8, samples=128):
             break
 
         elif status == "FAILED":
-            print(f"Failed: {status_data.get('error')}")
+            print("\n" + "=" * 50)
+            print("FAILED")
+            print("=" * 50)
+            print(f"Error: {status_data.get('error')}")
+            # Show full response for debugging
+            output = status_data.get("output", {})
+            if output:
+                print(f"\nOutput details:")
+                for k, v in output.items():
+                    if k != "video_base64":  # Skip the big base64 blob
+                        print(f"  {k}: {v}")
             break
 
-        elif elapsed > 600:  # 10 minute timeout
+        elif elapsed > 1200:  # 20 minute timeout
             print("Timeout: Job took too long")
             break
 

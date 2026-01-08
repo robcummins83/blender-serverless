@@ -397,38 +397,53 @@ def setup_render():
     # Render engine
     scene.render.engine = 'CYCLES'
 
-    # GPU setup - try multiple backends
-    # Key fix for Docker: must call refresh_devices() not get_devices()
+    # GPU setup - proven Docker/container approach
+    # Reference: https://github.com/nytimes/rd-blender-docker/issues/3
     gpu_enabled = False
     if CONFIG["use_gpu"]:
         prefs = bpy.context.preferences.addons['cycles'].preferences
 
-        # Try different compute backends in order of preference
-        for device_type in ['CUDA', 'OPTIX', 'HIP', 'ONEAPI', 'METAL']:
+        # CRITICAL: Call get_devices() first to populate the device list
+        # This must be done BEFORE checking prefs.devices
+        print("Detecting GPU devices...")
+        try:
+            # get_devices() returns tuple of (cuda_devices, opencl_devices)
+            cuda_devices, opencl_devices = prefs.get_devices()
+            print(f"  CUDA devices: {len(cuda_devices) if cuda_devices else 0}")
+            print(f"  OpenCL devices: {len(opencl_devices) if opencl_devices else 0}")
+        except Exception as e:
+            print(f"  get_devices() returned: {e}")
+
+        # Try OPTIX first (fastest on RTX), then CUDA
+        for device_type in ['OPTIX', 'CUDA', 'HIP', 'ONEAPI', 'METAL']:
             try:
                 print(f"Trying {device_type}...")
                 prefs.compute_device_type = device_type
 
-                # Refresh device list after setting compute type
-                prefs.get_devices()
-
                 # Check if any GPU devices are available
                 gpu_devices = [d for d in prefs.devices if d.type != 'CPU']
-                print(f"  Found {len(gpu_devices)} GPU device(s), {len(prefs.devices)} total devices")
+                print(f"  Found {len(gpu_devices)} GPU device(s)")
 
                 if gpu_devices:
-                    print(f"Found {len(gpu_devices)} GPU(s) with {device_type}:")
+                    print(f"Enabling {len(gpu_devices)} GPU(s) with {device_type}:")
+                    # Enable ALL devices (both CPU and GPU)
                     for device in prefs.devices:
-                        device.use = (device.type != 'CPU')  # Enable GPUs, disable CPU
-                        print(f"  - {device.name} ({device.type}): {'enabled' if device.use else 'disabled'}")
+                        device.use = True
+                        print(f"  - {device.name} ({device.type}): enabled")
 
-                    scene.cycles.device = 'GPU'
+                    # Set GPU rendering for ALL scenes
+                    for s in bpy.data.scenes:
+                        s.cycles.device = 'GPU'
+
                     gpu_enabled = True
                     print(f"GPU rendering enabled with {device_type}")
                     break
 
+            except TypeError as e:
+                print(f"{device_type} not supported: {e}")
+                continue
             except Exception as e:
-                print(f"{device_type} not available: {e}")
+                print(f"{device_type} error: {e}")
                 continue
 
         if not gpu_enabled:

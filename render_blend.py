@@ -64,6 +64,8 @@ def setup_gpu(require_gpu=True):
 
     Args:
         require_gpu: If True, raise error if no GPU found (default True for RunPod)
+
+    Reference: https://github.com/nytimes/rd-blender-docker/issues/3
     """
     scene = bpy.context.scene
     scene.render.engine = 'CYCLES'
@@ -71,29 +73,44 @@ def setup_gpu(require_gpu=True):
     prefs = bpy.context.preferences.addons['cycles'].preferences
     gpu_enabled = False
 
+    # CRITICAL: Call get_devices() FIRST to populate the device list
+    print("Detecting GPU devices...")
+    try:
+        cuda_devices, opencl_devices = prefs.get_devices()
+        print(f"  CUDA devices: {len(cuda_devices) if cuda_devices else 0}")
+        print(f"  OpenCL devices: {len(opencl_devices) if opencl_devices else 0}")
+    except Exception as e:
+        print(f"  get_devices() returned: {e}")
+
     # Try OptiX FIRST - uses RT cores, 2-3x faster on RTX cards
     for device_type in ['OPTIX', 'CUDA', 'HIP', 'ONEAPI', 'METAL']:
         try:
             print(f"Trying {device_type}...")
             prefs.compute_device_type = device_type
-            prefs.get_devices()  # Refresh device list
 
             gpu_devices = [d for d in prefs.devices if d.type != 'CPU']
+            print(f"  Found {len(gpu_devices)} GPU device(s)")
 
             if gpu_devices:
-                print(f"Found {len(gpu_devices)} GPU(s) with {device_type}:")
+                print(f"Enabling {len(gpu_devices)} GPU(s) with {device_type}:")
+                # Enable ALL devices
                 for device in prefs.devices:
-                    device.use = (device.type != 'CPU')
-                    status = 'enabled' if device.use else 'disabled'
-                    print(f"  - {device.name} ({device.type}): {status}")
+                    device.use = True
+                    print(f"  - {device.name} ({device.type}): enabled")
 
-                scene.cycles.device = 'GPU'
+                # Set GPU for ALL scenes
+                for s in bpy.data.scenes:
+                    s.cycles.device = 'GPU'
+
                 gpu_enabled = True
                 print(f"GPU rendering ENABLED with {device_type}")
                 break
 
+        except TypeError as e:
+            print(f"{device_type} not supported: {e}")
+            continue
         except Exception as e:
-            print(f"{device_type} not available: {e}")
+            print(f"{device_type} error: {e}")
             continue
 
     if not gpu_enabled:
