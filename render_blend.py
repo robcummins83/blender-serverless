@@ -160,6 +160,10 @@ def setup_render(args, gpu_enabled):
 
     scene.cycles.use_denoising = True
 
+    # Persistent Data - caches BVH between frames, significantly faster for animations
+    scene.render.use_persistent_data = True
+    print("Persistent Data enabled (BVH caching)")
+
     # Output format - PNG frames (encode with NVENC after)
     scene.render.image_settings.file_format = 'PNG'
     scene.render.image_settings.color_mode = 'RGB'
