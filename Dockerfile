@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility,graphics,video
 
-# Install dependencies
+# Install dependencies (no ffmpeg - we'll install NVENC version separately)
 RUN apt-get update && apt-get install -y \
     wget \
     xz-utils \
@@ -21,9 +21,16 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     python3 \
     python3-pip \
-    ffmpeg \
     xvfb \
     && rm -rf /var/lib/apt/lists/*
+
+# Install FFmpeg with NVENC support (static build)
+RUN wget -q https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
+    && tar -xf ffmpeg-release-amd64-static.tar.xz \
+    && mv ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg \
+    && mv ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe \
+    && rm -rf ffmpeg-*-amd64-static* \
+    && ffmpeg -version
 
 # Download and install Blender 4.2 LTS with CUDA support
 RUN wget -q https://download.blender.org/release/Blender4.2/blender-4.2.0-linux-x64.tar.xz \
