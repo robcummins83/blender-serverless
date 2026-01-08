@@ -45,7 +45,6 @@ WORKDIR /workspace
 COPY handler.py /workspace/handler.py
 COPY render_blend.py /workspace/render_blend.py
 COPY templates/ /workspace/templates/
-COPY blend_templates/ /workspace/blend_templates/
 
 # Set entrypoint
 CMD ["python3", "-u", "/workspace/handler.py"]
