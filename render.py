@@ -1,5 +1,8 @@
 """
-Test the RunPod Blender serverless endpoint (async with polling)
+RunPod Blender render client
+
+SINGLE SOURCE OF TRUTH: All render parameters are defined in CONFIG below.
+The handler.py has no defaults - all values come from here.
 """
 
 import os
@@ -10,16 +13,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Config - set these in .env or environment
+# =============================================================================
+# SINGLE SOURCE OF TRUTH - All render parameters defined here
+# =============================================================================
+CONFIG = {
+    # Template settings
+    "template": "ai_cpu_activation",
+    "template_url": None,  # Set to GitHub raw URL to download at runtime
+
+    # Render settings
+    "duration": None,       # None = use full template animation, or set seconds
+    "resolution": [1920, 1080],
+    "samples": 128,
+    "fps": 24,              # Match template fps (ai_cpu_activation is 24fps)
+
+    # Polling settings
+    "poll_interval": 10,    # Seconds between status checks
+    "timeout": 2100,        # 35 minutes max wait
+}
+# =============================================================================
+
+# API credentials from environment
 RUNPOD_API_KEY = os.environ.get("RUNPOD_API_KEY")
-ENDPOINT_ID = os.environ.get("RUNPOD_BLENDER_ENDPOINT_ID")
+ENDPOINT_ID = os.environ.get("RUNPOD_BLENDER_ENDPOINT_ID") or "9ypr4dw7bjj7xi"
 
 if not RUNPOD_API_KEY:
     print("ERROR: Set RUNPOD_API_KEY in environment or .env")
-    exit(1)
-
-if not ENDPOINT_ID:
-    print("ERROR: Set RUNPOD_BLENDER_ENDPOINT_ID in environment or .env")
     exit(1)
 
 BASE_URL = f"https://api.runpod.ai/v2/{ENDPOINT_ID}"
@@ -29,24 +48,35 @@ HEADERS = {
 }
 
 
-def test_render(template="ai_cpu_activation", duration=8, samples=128):
-    """Test a render using async /run endpoint with polling."""
+def run_render():
+    """Submit render job to RunPod and poll for completion."""
     print("=" * 50)
-    print(f"Testing Blender 4.2 + CUDA")
-    print(f"Template: {template}")
+    print(f"Blender 4.2 + CUDA Render")
+    print(f"Template: {CONFIG['template'] or 'from URL'}")
+    print(f"Duration: {CONFIG['duration'] or 'full animation'}")
+    print(f"Resolution: {CONFIG['resolution']}")
+    print(f"Samples: {CONFIG['samples']}")
+    print(f"FPS: {CONFIG['fps']}")
     print("=" * 50)
 
+    # Build payload from CONFIG - all parameters explicit
     payload = {
         "input": {
-            "template": template,
-            "resolution": [1920, 1080],
-            "samples": samples,
+            "resolution": CONFIG["resolution"],
+            "samples": CONFIG["samples"],
+            "fps": CONFIG["fps"],
         }
     }
 
-    # Only add duration if specified (blend files use their own duration)
-    if duration:
-        payload["input"]["duration"] = duration
+    # Template: either by name or URL
+    if CONFIG["template_url"]:
+        payload["input"]["template_url"] = CONFIG["template_url"]
+    else:
+        payload["input"]["template"] = CONFIG["template"]
+
+    # Duration: only add if specified (None = use full template animation)
+    if CONFIG["duration"]:
+        payload["input"]["duration"] = CONFIG["duration"]
 
     # Submit job (async)
     print("Submitting job...")
@@ -97,7 +127,7 @@ def test_render(template="ai_cpu_activation", duration=8, samples=128):
             video_base64 = output.get("video_base64")
             if video_base64:
                 video_bytes = base64.b64decode(video_base64)
-                output_path = "test_output.mp4"
+                output_path = "output.mp4"
                 with open(output_path, "wb") as f:
                     f.write(video_bytes)
                 print(f"\nSaved to: {output_path}")
@@ -117,20 +147,14 @@ def test_render(template="ai_cpu_activation", duration=8, samples=128):
                         print(f"  {k}: {v}")
             break
 
-        elif elapsed > 1200:  # 20 minute timeout
-            print("Timeout: Job took too long")
+        elif elapsed > CONFIG["timeout"]:
+            print(f"Timeout: Job exceeded {CONFIG['timeout']}s limit")
             break
 
-        time.sleep(10)
+        time.sleep(CONFIG["poll_interval"])
 
 
 if __name__ == "__main__":
-    import sys
-
-    # Parse simple args: python test_endpoint.py [template] [duration] [samples]
-    template = sys.argv[1] if len(sys.argv) > 1 else "ai_cpu_activation"
-    duration = int(sys.argv[2]) if len(sys.argv) > 2 else 8
-    samples = int(sys.argv[3]) if len(sys.argv) > 3 else 128
-
-    print(f"Config: template={template}, duration={duration}s, samples={samples}")
-    test_render(template=template, duration=duration, samples=samples)
+    # All render parameters come from CONFIG at top of file
+    # Edit CONFIG directly to change settings - single source of truth
+    run_render()

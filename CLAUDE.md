@@ -4,6 +4,38 @@
 
 Serverless Blender rendering on RunPod for generating B-roll clips. Uses BlenderKit .blend templates rendered with GPU acceleration.
 
+---
+
+## IMPORTANT: Render Workflow (DO NOT REBUILD DOCKER)
+
+**The Docker image does NOT need to be rebuilt for template changes.**
+
+RunPod fetches templates from GitHub at runtime using `template_url`. The workflow is:
+
+### To render with template changes:
+
+1. **Make changes to template** (e.g., modify .blend file or adjustment scripts)
+2. **Commit and push to GitHub** (any branch - does NOT trigger rebuild unless pushing to main)
+3. **Update `render.py` CONFIG** with the raw GitHub URL:
+   ```python
+   CONFIG = {
+       "template_url": "https://raw.githubusercontent.com/username/blender-serverless/branch/templates/template.blend",
+       ...
+   }
+   ```
+4. **Run `python render.py`** - RunPod downloads template from URL and renders
+
+### What triggers a Docker rebuild (AVOID unless necessary):
+- Pushing to `main` branch triggers GitHub Actions workflow
+- Only rebuild when changing: handler.py, render_blend.py, Dockerfile, or system dependencies
+
+### Single Source of Truth:
+- All render parameters are in `render.py` CONFIG dict
+- `handler.py` has NO defaults - everything must come from the caller
+- Change settings by editing CONFIG, not handler.py
+
+---
+
 ## Architecture
 
 ```
@@ -26,12 +58,14 @@ FFmpeg NVENC (GPU-accelerated H264 encoding)
 
 ```
 blender-serverless/
-├── handler.py          # RunPod serverless handler
+├── render.py           # Client script - SINGLE SOURCE OF TRUTH for all render params
+├── handler.py          # RunPod serverless handler (NO defaults - receives params from caller)
 ├── render_blend.py     # Generic .blend file renderer
 ├── Dockerfile          # Container with Blender 4.2 + CUDA
-├── templates/          # BlenderKit .blend templates
-│   └── ai_cpu_activation.blend
-├── test_endpoint.py    # Endpoint testing script
+├── templates/          # Branded .blend templates (ready for render)
+│   └── ai_cpu_activation_branded.blend
+├── scripts/            # One script per template for branding modifications
+│   └── ai_cpu_activation.py        # Branding for ai_cpu_activation.blend
 └── CLAUDE.md
 ```
 
@@ -75,17 +109,34 @@ To add new templates:
 
 ## Configuration
 
-### handler.py
+### render.py (SINGLE SOURCE OF TRUTH)
 ```python
-TEMPLATES = {
-    "ai_cpu_activation": "/workspace/templates/ai_cpu_activation.blend",
-}
+CONFIG = {
+    # Template settings
+    "template": "ai_cpu_activation",
+    "template_url": None,  # Set to GitHub raw URL to download at runtime
 
-DEFAULT_CONFIG = {
-    "duration": 8,
+    # Render settings
+    "duration": None,       # None = use full template animation, or set seconds
     "resolution": [1920, 1080],
     "samples": 128,
-    "fps": 30,
+    "fps": 24,              # Match template fps (ai_cpu_activation is 24fps)
+
+    # Polling settings
+    "poll_interval": 10,    # Seconds between status checks
+    "timeout": 2100,        # 35 minutes max wait
+}
+```
+
+### handler.py (NO DEFAULTS)
+```python
+# handler.py has NO default values - all params must come from render.py
+# This ensures single source of truth and no hidden behavior
+DEFAULT_CONFIG = {
+    "duration": None,
+    "resolution": None,  # Required
+    "samples": None,     # Required
+    "fps": None,         # Required
 }
 ```
 
@@ -97,14 +148,27 @@ DEFAULT_CONFIG = {
 
 ## API
 
-### Request
+### Request (using template name)
 ```json
 {
     "input": {
         "template": "ai_cpu_activation",
-        "duration": 8,
         "resolution": [1920, 1080],
-        "samples": 64
+        "samples": 128,
+        "fps": 24
+    }
+}
+```
+
+### Request (using template URL - preferred for template changes)
+```json
+{
+    "input": {
+        "template_url": "https://raw.githubusercontent.com/.../template.blend",
+        "resolution": [1920, 1080],
+        "samples": 128,
+        "fps": 24,
+        "duration": 8
     }
 }
 ```
@@ -129,11 +193,14 @@ RUNPOD_API_KEY=your_key
 RUNPOD_ENDPOINT_ID=9ypr4dw7bjj7xi
 ```
 
-## Testing
+## Running a Render
 
 ```bash
-python test_endpoint.py
+# Edit CONFIG in render.py first, then:
+python render.py
 ```
+
+Output saved to `output.mp4` in current directory.
 
 ## Docker Configuration
 

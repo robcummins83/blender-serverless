@@ -39,17 +39,18 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-# Blend file templates (BlenderKit templates)
+# Blend file templates (branded versions)
 TEMPLATES = {
-    "ai_cpu_activation": "/workspace/templates/ai_cpu_activation.blend",
+    "ai_cpu_activation": "/workspace/templates/ai_cpu_activation_branded.blend",
 }
 
-# Default config
+# No defaults - all parameters must be passed from calling script
+# This ensures single source of truth and no hidden behavior
 DEFAULT_CONFIG = {
-    "duration": 8,
-    "resolution": [1920, 1080],
-    "samples": 128,
-    "fps": 30,
+    "duration": None,      # None = use full template animation
+    "resolution": None,    # Required from caller
+    "samples": None,       # Required from caller
+    "fps": None,           # Required from caller
 }
 
 
@@ -127,6 +128,18 @@ def render_blender(template_path: str, output_path: str, config: dict) -> dict:
             "error": f"Template not found: {template_path}"
         }
 
+    # Validate required parameters
+    resolution = config.get("resolution")
+    samples = config.get("samples")
+    fps = config.get("fps")
+
+    if not resolution:
+        return {"success": False, "error": "Missing required parameter: resolution"}
+    if not samples:
+        return {"success": False, "error": "Missing required parameter: samples"}
+    if not fps:
+        return {"success": False, "error": "Missing required parameter: fps"}
+
     # Build Blender command with xvfb-run for GPU initialization
     cmd = [
         "xvfb-run",
@@ -138,10 +151,10 @@ def render_blender(template_path: str, output_path: str, config: dict) -> dict:
         "--python", "/workspace/render_blend.py",
         "--",
         "--output", output_path,
-        "--width", str(config.get("resolution", [1920, 1080])[0]),
-        "--height", str(config.get("resolution", [1920, 1080])[1]),
-        "--samples", str(config.get("samples", 128)),
-        "--fps", str(config.get("fps", 30)),
+        "--width", str(resolution[0]),
+        "--height", str(resolution[1]),
+        "--samples", str(samples),
+        "--fps", str(fps),
     ]
     # Only add duration if explicitly set (otherwise use file's animation)
     if config.get("duration"):

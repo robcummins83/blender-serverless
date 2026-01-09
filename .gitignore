@@ -2,5 +2,7 @@ __pycache__/
 *.py[cod]
 *.mp4
 *.blend1
+*.png
 .env
 .DS_Store
+output.mp4
